@@ -1,0 +1,33 @@
+name: ccdae-recode
+
+services:
+  app:
+    image: ccdae-app:local
+    container_name: php-ccdae-recode
+    working_dir: /var/www/html
+    command: php artisan serve --host=0.0.0.0 --port=8000 --no-reload
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8788
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres-ccdae
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-data}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?Carregue as credenciais com --env-file ../CCDAE/.env}
+      CACHE_STORE: file
+      SESSION_DRIVER: file
+      QUEUE_CONNECTION: sync
+    ports:
+      - "8788:8000"
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - ccdae
+    restart: unless-stopped
+
+networks:
+  ccdae:
+    name: rede_local
+    external: true

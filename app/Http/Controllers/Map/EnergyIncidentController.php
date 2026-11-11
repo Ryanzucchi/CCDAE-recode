@@ -1,0 +1,105 @@
+<?php
+
+namespace App\Http\Controllers\Map;
+
+use App\Http\Controllers\Controller;
+use App\Models\Distrito;
+use App\Services\{MapData, OccurrenceListing};
+use GeoVeil\Forms\{Form, Field};
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+
+class EnergyIncidentController extends Controller
+{
+    private const TYPES = ['surto' => 'Surto de energia', 'rompimento_cabo' => 'Rompimento de cabo', 'explosao_transformador' => 'Explosão de transformador', 'queda_poste' => 'Queda de poste', 'curto_circuito' => 'Curto-circuito', 'interrupcao' => 'Interrupção de fornecimento', 'outro' => 'Outro'];
+    private const CAUSES = ['clima' => 'Evento climático', 'vegetacao' => 'Vegetação', 'acidente' => 'Acidente', 'sobrecarga' => 'Sobrecarga', 'falha_equipamento' => 'Falha de equipamento', 'vandalismo' => 'Vandalismo', 'manutencao' => 'Manutenção', 'desconhecida' => 'Desconhecida', 'outra' => 'Outra'];
+    private const SEVERITIES = ['baixa' => 'Baixa', 'media' => 'Média', 'alta' => 'Alta', 'critica' => 'Crítica'];
+    private const STATUSES = ['registrado' => 'Registrado', 'em_atendimento' => 'Em atendimento', 'resolvido' => 'Resolvido', 'cancelado' => 'Cancelado'];
+
+    public function index(Request $request, MapData $data, OccurrenceListing $listing)
+    {
+        return view('maps.occurrences', $listing->viewData('energia', $request, $data));
+    }
+
+    public function create(Request $request, MapData $data)
+    {
+        return $this->editor($data, null);
+    }
+
+    public function edit(Request $request, MapData $data, int $id)
+    {
+        $incident = DB::table($data->table('energy', 'incidentes_energia'))->where('id', $id)->first();
+        abort_unless($incident, 404);
+        return $this->editor($data, $incident);
+    }
+
+    private function editor(MapData $data, ?object $incident)
+    {
+        $districts = Distrito::query()->orderBy('nome')->pluck('nome', 'id')->all();
+        $options = [];
+        foreach ([['poste_id','postes','codigo_patrimonio'], ['cabeamento_id','cabeamentos','nome'], ['equipamento_id','equipamentos_infraestrutura','nome'], ['central_id','centrais_distribuicao','nome']] as [$field, $table, $label]) {
+            $options[$field] = [];
+            if ($incident?->$field) $options[$field][$incident->$field] = DB::table($data->table('infrastructure', $table))->where('id', $incident->$field)->value($label) ?? 'Ativo #'.$incident->$field;
+        }
+        $form = Form::make('energy-incident')
+            ->section('Ocorrência', [
+                Field::select('tipo', self::TYPES)->label('Tipo')->required(),
+                Field::select('causa', self::CAUSES)->label('Causa'),
+                Field::datetime('ocorrido_em')->label('Data e hora')->required()->default(now()->format('Y-m-d\TH:i')),
+                Field::datetime('resolvido_em')->label('Resolvido em'),
+                Field::select('severidade', self::SEVERITIES)->label('Severidade')->required()->default('media'),
+                Field::select('situacao', self::STATUSES)->label('Situação')->required()->default('registrado'),
+                Field::textarea('descricao')->label('Descrição'),
+            ])->section('Ativo afetado', [
+                Field::select('distrito_id', $districts)->label('Distrito'),
+                Field::remoteSelect('poste_id', route('resource.lookup', 'postes'), $options['poste_id'])->label('Poste'),
+                Field::remoteSelect('cabeamento_id', route('resource.lookup', 'cabeamentos'), $options['cabeamento_id'])->label('Cabeamento'),
+                Field::remoteSelect('equipamento_id', route('resource.lookup', 'equipamentos'), $options['equipamento_id'])->label('Equipamento'),
+                Field::remoteSelect('central_id', route('resource.lookup', 'centrais'), $options['central_id'])->label('Central'),
+            ])->section('Localização do dano', [Field::point()->label('Ponto afetado')->required()]);
+        $values = $incident ? (array) $incident : [];
+        if ($incident) foreach (['ocorrido_em', 'resolvido_em'] as $field) {
+            if ($values[$field]) $values[$field] = \Carbon\Carbon::parse($values[$field])->format('Y-m-d\TH:i');
+        }
+        return view('maps.energy-incident-form', compact('form', 'values', 'incident'));
+    }
+
+    public function store(Request $request, MapData $data)
+    {
+        return $this->save($request, $data);
+    }
+
+    public function update(Request $request, MapData $data, int $id)
+    {
+        abort_unless(DB::table($data->table('energy', 'incidentes_energia'))->where('id', $id)->exists(), 404);
+        return $this->save($request, $data, $id);
+    }
+
+    private function save(Request $request, MapData $data, ?int $id = null)
+    {
+        $input = $request->validate([
+            'tipo' => ['required', Rule::in(array_keys(self::TYPES))],
+            'causa' => ['nullable', Rule::in(array_keys(self::CAUSES))],
+            'ocorrido_em' => 'required|date', 'resolvido_em' => 'nullable|date|after_or_equal:ocorrido_em',
+            'severidade' => ['required', Rule::in(array_keys(self::SEVERITIES))],
+            'situacao' => ['required', Rule::in(array_keys(self::STATUSES))],
+            'descricao' => 'nullable|string|max:10000',
+            'distrito_id' => ['nullable', 'integer', Rule::exists((new Distrito)->getTable(), 'id')],
+            'poste_id' => ['nullable','integer',Rule::exists($data->table('infrastructure','postes'), 'id')],
+            'cabeamento_id' => ['nullable','integer',Rule::exists($data->table('infrastructure','cabeamentos'), 'id')],
+            'equipamento_id' => ['nullable','integer',Rule::exists($data->table('infrastructure','equipamentos_infraestrutura'), 'id')],
+            'central_id' => ['nullable','integer',Rule::exists($data->table('infrastructure','centrais_distribuicao'), 'id')],
+            'latitude' => 'required|numeric|between:-90,90', 'longitude' => 'required|numeric|between:-180,180',
+        ]);
+        $input['updated_at'] = now();
+        $table = $data->table('energy', 'incidentes_energia');
+        if ($id) DB::table($table)->where('id', $id)->update($input);
+        else {
+            $input['created_at'] = now();
+            $input['registrado_por'] = $request->user()->id;
+            $id = DB::table($table)->insertGetId($input);
+        }
+        return redirect()->route($request->routeIs('original-occurrence.*') ? 'original-occurrence.energia.edit' : 'energy.incidents.edit', $id)->with('status', 'Ocorrência salva.');
+    }
+}

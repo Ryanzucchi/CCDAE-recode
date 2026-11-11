@@ -1,0 +1,25 @@
+{
+  "name": "geoveil/geoveil",
+  "version": "2.0.0-dev",
+  "description": "Declarative geospatial workspaces for Laravel",
+  "type": "library",
+  "license": "MIT",
+  "require": {
+    "php": "^8.2",
+    "illuminate/support": "^12.0",
+    "illuminate/view": "^12.0",
+    "illuminate/database": "^12.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "GeoVeil\\": "src/"
+    }
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "GeoVeil\\GeoVeilServiceProvider"
+      ]
+    }
+  }
+}

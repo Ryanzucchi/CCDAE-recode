@@ -1,0 +1,1 @@
+<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Distrito excluído</title><body><p>Distrito excluído.</p><script>window.parent.postMessage({ type: 'ccdae:district-saved' }, window.location.origin);</script></body></html>

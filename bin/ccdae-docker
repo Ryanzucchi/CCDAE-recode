@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CCDAE_ENV="${PROJECT_DIR}/../CCDAE/.env"
+
+if [[ ! -f "${CCDAE_ENV}" ]]; then
+    echo "Arquivo de ambiente do CCDAE nao encontrado: ${CCDAE_ENV}" >&2
+    exit 1
+fi
+
+exec docker compose \
+    --project-directory "${PROJECT_DIR}" \
+    --env-file "${CCDAE_ENV}" \
+    "$@"

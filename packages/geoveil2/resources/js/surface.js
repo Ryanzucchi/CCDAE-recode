@@ -255,9 +255,10 @@ export function surfaceLayer(id, features, options) {
     layer.setCutoff = percentage => layer.setMinWeight(percentage <= 1 ? 0.004 : percentage >= 100 ? Math.max(0.005, maximum - 0.015) : 0.004 + (percentage - 1) / 99 * (maximum - 0.025));
     layer.candidates = data.features.map(feature => {
         const [longitude, latitude] = feature.geometry.coordinates;
-        const weight = interpolate(mesh.spatialIndex, longitude, latitude, options.influence);
-        const coordinate = maplibregl.MercatorCoordinate.fromLngLat([longitude, latitude], 5 + heightScale(weight) * options.altitude);
-        return { id: feature.id, weight, coordinate: [coordinate.x, coordinate.y, coordinate.z] };
+        const surfaceWeight = interpolate(mesh.spatialIndex, longitude, latitude, options.influence);
+        const weight = Math.max(Number(feature.properties.weight) || 0, surfaceWeight);
+        const coordinate = maplibregl.MercatorCoordinate.fromLngLat([longitude, latitude], 5 + heightScale(surfaceWeight) * options.altitude + 18);
+        return { id: feature.id, properties: feature.properties, weight, coordinate: [coordinate.x, coordinate.y, coordinate.z] };
     });
     return layer;
 }

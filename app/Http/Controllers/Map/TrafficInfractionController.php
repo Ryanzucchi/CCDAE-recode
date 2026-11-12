@@ -34,17 +34,17 @@ class TrafficInfractionController extends Controller
         $roads = [];
         if ($infraction?->via_transito_id) $roads[$infraction->via_transito_id] = DB::table($data->table('mobility', 'via_transitos'))->where('id', $infraction->via_transito_id)->value('nome') ?? 'Via #'.$infraction->via_transito_id;
         $form = Form::make('traffic-infraction')->section('Dados da infração', [
-            Field::text('tipo')->label('Tipo')->required(),
-            Field::text('codigo')->label('Código'),
-            Field::text('placa')->label('Placa'),
+            Field::text('tipo')->label('Tipo')->required()->maxLength(80),
+            Field::text('codigo')->label('Código')->maxLength(40),
+            Field::text('placa')->label('Placa')->maxLength(10),
             Field::datetime('ocorrido_em')->label('Data e hora')->required()->default(now()->format('Y-m-d\TH:i')),
             Field::remoteSelect('via_transito_id', route('resource.lookup', 'vias'), $roads)->label('Via'),
-            Field::select('distrito_id', $districts)->label('Distrito'),
-            Field::number('valor')->label('Valor (R$)')->step('0.01'),
-            Field::number('pontos')->label('Pontos')->step('1')->default(0),
+            Field::select('distrito_id', $districts)->label('Distrito')->searchable(),
+            Field::number('valor')->label('Valor (R$)')->step('0.01')->min(0),
+            Field::number('pontos')->label('Pontos')->step('1')->min(0)->max(20)->default(0),
             Field::select('situacao', self::STATUSES)->label('Situação')->required()->default('registrada'),
-            Field::textarea('descricao')->label('Descrição'),
-        ])->section('Localização', [Field::point()->label('Local da infração')->required()]);
+            Field::textarea('descricao')->label('Descrição')->maxLength(500)->rows(4),
+        ])->section('Localização', [Field::point()->label('Local da infração')->required()], 'Marque no mapa o local exato da ocorrência.');
         $values = $infraction ? (array) $infraction : [];
         if ($infraction && $values['ocorrido_em']) $values['ocorrido_em'] = \Carbon\Carbon::parse($values['ocorrido_em'])->format('Y-m-d\TH:i');
         return view('maps.traffic-infraction-form', compact('form', 'values', 'infraction'));

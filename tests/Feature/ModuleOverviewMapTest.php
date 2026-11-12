@@ -41,7 +41,10 @@ class ModuleOverviewMapTest extends TestCase
             'longitude' => -57.68, 'geojson' => json_encode(['type' => 'Polygon', 'coordinates' => [[[-57.69,-16.08],[-57.67,-16.08],[-57.67,-16.06],[-57.69,-16.08]]]])]);
         DB::table('via_transitos')->insert(['id' => 5, 'nome' => 'Via Centro', 'nivel_congestionamento' => 'moderado',
             'velocidade_media' => 30, 'geojson' => json_encode(['type' => 'LineString', 'coordinates' => [[-57.69,-16.08],[-57.67,-16.06]]])]);
-        $this->get(route('original-admin.map-infrastructure'))->assertOk()->assertViewHas('map', function ($map) {
+        $this->get(route('original-admin.map-infrastructure'))->assertOk()
+            ->assertSee('Modo do mapa de infraestrutura')->assertSee('Legenda de infraestrutura')
+            ->assertSee('Aproxime o zoom (nível 15+)')
+            ->assertViewHas('map', function ($map) {
             $layers = collect($map->toArray()['layers']);
             $layer = $layers->firstWhere('id', 'postes');
             return $layer['vector']['sourceLayer'] === 'postes' && $layer['data']['features'] === []
@@ -92,7 +95,8 @@ class ModuleOverviewMapTest extends TestCase
         });
         $this->get(route('internet', ['distrito_id' => $district->id, 'engine' => 'leaflet']))->assertOk()->assertViewHas('map', function ($map) {
             $payload = $map->toArray();
-            return $payload['plugin']['id'] === 'leaflet' && str_contains(collect($payload['layers'])->firstWhere('id', 'infra-2')['viewport'], '/mapas/infraestrutura-janela/internet/2');
+            return $payload['layout'] === 'embedded' && $payload['plugin']['id'] === 'leaflet'
+                && str_contains(collect($payload['layers'])->firstWhere('id', 'infra-2')['viewport'], '/mapas/infraestrutura-janela/internet/2');
         });
         $bbox = ['west' => -57.70, 'south' => -16.09, 'east' => -57.66, 'north' => -16.05, 'distrito_id' => $district->id];
         $this->get(route('maps.infrastructure-viewport', ['module' => 'energia', 'layer' => 0] + $bbox))

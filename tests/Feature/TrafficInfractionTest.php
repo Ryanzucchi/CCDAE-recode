@@ -38,7 +38,13 @@ class TrafficInfractionTest extends TestCase
         $this->get(route('original-occurrence.transito.index'))->assertOk()
             ->assertSee(route('original-occurrence.transito.create'));
         $this->get(route('original-occurrence.transito.create'))->assertOk()
-            ->assertSee(route('original-occurrence.transito.store'));
+            ->assertSee(route('original-occurrence.transito.store'))
+            ->assertSee('maxlength="80"', false)
+            ->assertSee('maxlength="40"', false)
+            ->assertSee('maxlength="10"', false)
+            ->assertSee('max="20"', false)
+            ->assertSee('maxlength="500"', false)
+            ->assertSee('data-geoveil-select-filter="gv-traffic-infraction-distrito_id"', false);
         $this->post(route('original-occurrence.transito.store'), $this->payload())
             ->assertRedirect(route('original-occurrence.transito.edit', 1));
         $this->get(route('original-occurrence.transito.edit', 1))->assertOk()

@@ -13,8 +13,9 @@ final class Form implements \JsonSerializable
         if (!preg_match('/^[a-z][a-z0-9_-]*$/', $id)) throw new InvalidArgumentException('ID de formulário inválido.');
         return new self($id);
     }
-    public function section(string $label, array $fields): self
+    public function section(string $label, array $fields, ?string $description = null, int $columns = 2): self
     {
+        if ($columns < 1 || $columns > 3) throw new InvalidArgumentException('Número de colunas inválido.');
         $names = [];
         foreach ($this->sections as $section) foreach ($section['fields'] as $field) $names[$field['name']] = true;
         $definitions = [];
@@ -25,7 +26,7 @@ final class Form implements \JsonSerializable
             $names[$definition['name']] = true;
             $definitions[] = $definition;
         }
-        $this->sections[] = ['label' => $label, 'fields' => $definitions];
+        $this->sections[] = ['label' => $label, 'description' => $description, 'columns' => $columns, 'fields' => $definitions];
         return $this;
     }
     public function jsonSerialize(): array { return ['id' => $this->id, 'sections' => $this->sections]; }

@@ -45,19 +45,19 @@ class EnergyIncidentController extends Controller
         $form = Form::make('energy-incident')
             ->section('Ocorrência', [
                 Field::select('tipo', self::TYPES)->label('Tipo')->required(),
-                Field::select('causa', self::CAUSES)->label('Causa'),
+                Field::select('causa', self::CAUSES)->label('Causa')->searchable(),
                 Field::datetime('ocorrido_em')->label('Data e hora')->required()->default(now()->format('Y-m-d\TH:i')),
                 Field::datetime('resolvido_em')->label('Resolvido em'),
                 Field::select('severidade', self::SEVERITIES)->label('Severidade')->required()->default('media'),
                 Field::select('situacao', self::STATUSES)->label('Situação')->required()->default('registrado'),
                 Field::textarea('descricao')->label('Descrição'),
             ])->section('Ativo afetado', [
-                Field::select('distrito_id', $districts)->label('Distrito'),
+                Field::select('distrito_id', $districts)->label('Distrito')->searchable(),
                 Field::remoteSelect('poste_id', route('resource.lookup', 'postes'), $options['poste_id'])->label('Poste'),
                 Field::remoteSelect('cabeamento_id', route('resource.lookup', 'cabeamentos'), $options['cabeamento_id'])->label('Cabeamento'),
                 Field::remoteSelect('equipamento_id', route('resource.lookup', 'equipamentos'), $options['equipamento_id'])->label('Equipamento'),
                 Field::remoteSelect('central_id', route('resource.lookup', 'centrais'), $options['central_id'])->label('Central'),
-            ])->section('Localização do dano', [Field::point()->label('Ponto afetado')->required()]);
+            ], 'Relacione o incidente ao ativo danificado quando ele estiver cadastrado.')->section('Localização do dano', [Field::point()->label('Ponto afetado')->required()]);
         $values = $incident ? (array) $incident : [];
         if ($incident) foreach (['ocorrido_em', 'resolvido_em'] as $field) {
             if ($values[$field]) $values[$field] = \Carbon\Carbon::parse($values[$field])->format('Y-m-d\TH:i');

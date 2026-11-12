@@ -58,6 +58,10 @@ class RoadResourceTest extends TestCase
         $road = DB::table('via_transitos')->first();
         $this->assertSame('LineString', json_decode($road->geojson, true)['type']);
         DB::table('via_transitos')->where('id', $road->id)->update(['osm_way_id' => 12345]);
+        $this->get(route('roads.edit', $road->id))->assertOk()
+            ->assertSee('ID da via no OpenStreetMap')
+            ->assertSee('value="12345"', false)
+            ->assertSee('disabled', false);
         $this->put(route('roads.update', $road->id), array_merge($this->payload(), ['nome' => 'Avenida Nova', 'osm_way_id' => 999]))->assertRedirect();
         $this->assertSame('Avenida Nova', DB::table('via_transitos')->first()->nome);
         $this->assertSame(12345, DB::table('via_transitos')->first()->osm_way_id);
@@ -82,7 +86,13 @@ class RoadResourceTest extends TestCase
         ]);
         $this->get(route('roads.index', ['sort' => 'velocidade_media', 'direction' => 'desc']))
             ->assertOk()->assertViewHas('items', fn ($items) => $items->getCollection()->pluck('nome')->all() === ['Avenida Alta', 'Rua Baixa'])
-            ->assertSee('Visualizar');
+            ->assertSee('Visualizar')->assertSee('data-resource-table="roads"', false)
+            ->assertSee('data-column-toggle="sentido"', false)
+            ->assertSee('data-column-toggle="estado_pavimento"', false)
+            ->assertSee('data-column-toggle="inclinacao_pista"', false)
+            ->assertSee('data-column-toggle="created_at"', false)
+            ->assertSee('data-column-toggle="updated_at"', false);
+        $this->get(route('roads.index', ['sort' => 'created_at', 'direction' => 'desc']))->assertOk();
         $this->get(route('roads.show', 1))->assertOk()->assertSee('Avenida Alta')->assertSee('Início → fim da geometria');
         $this->get(route('roads.show', 999))->assertNotFound();
         $this->getJson(route('roads.index', ['sort' => 'velocidade_media desc']))->assertUnprocessable();

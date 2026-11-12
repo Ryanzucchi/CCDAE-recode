@@ -8,9 +8,9 @@
 @if($map)
 <section class="ccdae-map-card ccdae-network-card"><h2>Visão geral da infraestrutura {{ $module === 'energia' ? 'elétrica' : 'de internet' }}</h2><p>{{ $module === 'energia' ? 'Clique em um fio, poste, transformador ou central para consultar seus dados.' : 'Clique em uma fibra, antena ou equipamento para consultar seus dados.' }}</p>
 <form class="ccdae-search ccdae-network-filter" method="get">
-    <label for="district">Distrito</label><select name="distrito_id" id="district"><option value="">Visão geral da cidade</option>@foreach($districts as $district)<option value="{{ $district->id }}" @selected($districtId === $district->id)>{{ $district->nome }}</option>@endforeach</select>
-    <label for="engine">Mapa</label><select name="engine" id="engine"><option value="maplibre" @selected(request('engine') !== 'leaflet')>MapLibre</option><option value="leaflet" @selected(request('engine') === 'leaflet')>Leaflet</option></select>
-    <button type="submit" class="ccdae-theme-toggle">Aplicar</button><small>A visão geral mostra toda a rede de {{ $module === 'energia' ? 'energia elétrica' : 'telecomunicações' }}. O distrito apenas filtra a visualização.</small>
+    <label for="district">Distrito</label><select name="distrito_id" id="district" onchange="this.form.requestSubmit()"><option value="">Visão geral da cidade</option>@foreach($districts as $district)<option value="{{ $district->id }}" @selected($districtId === $district->id)>{{ $district->nome }}</option>@endforeach</select>
+    <label for="engine">Mapa</label><select name="engine" id="engine" onchange="this.form.requestSubmit()"><option value="maplibre" @selected(request('engine') !== 'leaflet')>MapLibre</option><option value="leaflet" @selected(request('engine') === 'leaflet')>Leaflet</option></select>
+    <noscript><button type="submit" class="ccdae-theme-toggle">Aplicar</button></noscript><small>A visão geral mostra toda a rede de {{ $module === 'energia' ? 'energia elétrica' : 'telecomunicações' }}. O distrito apenas filtra a visualização.</small>
 </form>
 <div class="ccdae-network-map"><x-geoveil::map :map="$map" /><aside class="ccdae-network-legend"><strong>Rede de {{ $module === 'energia' ? 'energia elétrica' : 'internet' }}</strong>
 @if($module === 'energia')<span>● Postes</span><span>━ Baixa tensão</span><span>━ Alta tensão</span><span>● Equipamentos e centrais</span>

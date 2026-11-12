@@ -51,7 +51,8 @@ export async function maplibreAdapter(container, config, select, report, onViewp
     const has3d = config.layers.some(layer => layer.type === 'building');
     const { surfaceLayer } = hasSurface ? await import('./surface.js') : {};
     const surfaces = new Map(), signatures = new Map(), cutoffs = new Map();
-    const map = new maplibregl.Map({ container, center: config.center, zoom: config.zoom, pitch: hasSurface || has3d ? 48 : 0, bearing: hasSurface ? -10 : 0, style: {
+    const surfaceLayers = new Map(config.layers.filter(layer => layer.type === 'surface').map(layer => [layer.id, layer]));
+    const map = new maplibregl.Map({ container, center: config.center, zoom: config.zoom, pitch: hasSurface ? 62 : has3d ? 48 : 0, bearing: hasSurface ? -18 : 0, style: {
         version: 8, sources: { base: { type: 'raster', tiles: [config.plugin.tiles ?? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 19, attribution: config.plugin.attribution } },
         layers: [{ id: 'base', type: 'raster', source: 'base', paint: config.theme === 'dark' ? { 'raster-brightness-max': 0.36, 'raster-saturation': -0.72, 'raster-contrast': 0.18 } : {} }],
     }});
@@ -64,7 +65,7 @@ export async function maplibreAdapter(container, config, select, report, onViewp
         return { type: 'FeatureCollection', features: features.map(feature => ({ ...feature, properties: { ...feature.properties, __gv_color: colorFor(layer, feature.properties) } })) };
     }
     function updateSurface(layer, features) {
-        const signature = features.map(feature => feature.id).join('|');
+        const signature = features.map(feature => `${feature.id}:${feature.properties?.[layer.surface.field]}`).join('|');
         if (signatures.get(layer.id) === signature) return;
         signatures.set(layer.id, signature);
         if (map.getLayer(layer.id)) map.removeLayer(layer.id);
@@ -72,18 +73,58 @@ export async function maplibreAdapter(container, config, select, report, onViewp
         const surface = surfaceLayer(layer.id, features, layer.surface);
         if (surface) { surfaces.set(layer.id, surface); map.addLayer(surface); surface.setCutoff(cutoffs.get(layer.id) ?? 1); }
     }
-    map.on('click', event => {
-        let closest = null, distance = 28;
-        for (const [id, surface] of surfaces) {
-            for (const candidate of surface.candidates) {
-                if (candidate.weight < surface.minWeight) continue;
-                const point = surface.project(candidate.coordinate, map.getCanvas().clientWidth, map.getCanvas().clientHeight);
-                if (!point) continue;
-                const gap = Math.hypot(point.x-event.point.x,point.y-event.point.y);
-                if (gap < distance) { distance=gap; closest={layer:id,id:candidate.id}; }
-            }
+    const tooltip = hasSurface ? document.createElement('div') : null;
+    if (tooltip) {
+        tooltip.className = 'gv-surface-tooltip';
+        tooltip.hidden = true;
+        container.append(tooltip);
+    }
+    const classifications = ['Mínimo', 'Muito baixo', 'Baixo', 'Baixo moderado', 'Moderado baixo', 'Moderado', 'Moderado alto', 'Elevado', 'Alto', 'Muito alto', 'Severo', 'Muito severo', 'Crítico', 'Extremo', 'Máximo'];
+    function nearestSurface(point, radius = 24) {
+        let closest = null, distance = radius;
+        for (const [id, surface] of surfaces) for (const candidate of surface.candidates) {
+            if (candidate.weight < surface.minWeight) continue;
+            const projected = surface.project(candidate.coordinate, map.getCanvas().clientWidth, map.getCanvas().clientHeight);
+            if (!projected) continue;
+            const gap = Math.hypot(projected.x - point.x, projected.y - point.y);
+            if (gap < distance) { distance = gap; closest = { id, surface, candidate }; }
         }
-        if (closest) select(closest.layer, closest.id);
+        return closest;
+    }
+    function hideSurfaceTooltip() {
+        if (tooltip) tooltip.hidden = true;
+        if (hasSurface) map.getCanvas().style.cursor = '';
+    }
+    if (tooltip) {
+        map.on('mousemove', event => {
+            const closest = nearestSurface(event.point);
+            if (!closest) { hideSurfaceTooltip(); return; }
+            const { id, surface, candidate } = closest;
+            const layer = surfaceLayers.get(id);
+            const titleField = Object.keys(layer.popup ?? {})[0] ?? 'name';
+            const value = Number(candidate.properties?.value) || 0;
+            const relative = Math.min(.999, Math.max(0, (candidate.weight - surface.minWeight) / Math.max(.001, surface.maxWeight - surface.minWeight)));
+            const band = Math.min(9, Math.floor(relative * 10));
+            const rows = [
+                `${layer.label}: ${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: Math.abs(value) >= 100 ? 0 : Math.abs(value) >= 1 ? 1 : 2 }).format(value)}`,
+                `Classificação no corte: ${classifications[Math.min(14, Math.floor(relative * 15))]}`,
+                `Faixa de cor ativa: ${band * 10}–${(band + 1) * 10}%`,
+                `Percentual geral na cidade: ${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(candidate.weight * 100)}%`,
+            ];
+            if (Number(candidate.properties?.streets) > 1) rows.push(`${candidate.properties.streets} vias nesta área`);
+            const title = document.createElement('strong');
+            title.textContent = String(candidate.properties?.[titleField] ?? 'Local sem via identificada');
+            tooltip.replaceChildren(title, ...rows.map(row => { const node = document.createElement('div'); node.textContent = row; return node; }));
+            tooltip.style.left = `${event.point.x + 14}px`;
+            tooltip.style.top = `${event.point.y + 14}px`;
+            tooltip.hidden = false;
+            map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseout', hideSurfaceTooltip);
+    }
+    map.on('click', event => {
+        const closest = nearestSurface(event.point, 28);
+        if (closest) select(closest.id, closest.candidate.id);
     });
     const applyTheme = theme => {
         config.theme = theme;
@@ -174,7 +215,7 @@ export async function maplibreAdapter(container, config, select, report, onViewp
             });
         },
         theme: applyTheme,
-        cutoff(id, percentage) { cutoffs.set(id, percentage); surfaces.get(id)?.setCutoff(percentage); },
+        cutoff(id, percentage) { cutoffs.set(id, percentage); surfaces.get(id)?.setCutoff(percentage); hideSurfaceTooltip(); },
         fit(features) { const bounds = boundsOf(features); if (bounds) map.fitBounds(bounds, { padding: 55, maxZoom: 15, duration: 450 }); },
         destroy() { clearTimeout(viewportTimer); viewportRequest?.abort(); observer.disconnect(); map.remove(); },
     };

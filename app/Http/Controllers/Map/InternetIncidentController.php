@@ -36,19 +36,19 @@ class InternetIncidentController extends Controller
             if ($incident?->$field) $options[$field][$incident->$field] = DB::table($data->table('infrastructure', $table))->where('id', $incident->$field)->value($label) ?? 'Ativo #'.$incident->$field;
         }
         $form = Form::make('internet-incident')->section('Ocorrência', [
-            Field::select('tipo', self::TYPES)->label('Tipo')->required(), Field::select('causa', self::CAUSES)->label('Causa'),
+            Field::select('tipo', self::TYPES)->label('Tipo')->required(), Field::select('causa', self::CAUSES)->label('Causa')->searchable(),
             Field::datetime('ocorrido_em')->label('Data e hora')->required()->default(now()->format('Y-m-d\TH:i')),
             Field::datetime('resolvido_em')->label('Resolvido em'),
             Field::select('severidade', self::SEVERITIES)->label('Severidade')->required()->default('media'),
             Field::select('situacao', self::STATUSES)->label('Situação')->required()->default('registrado'),
-            Field::number('usuarios_afetados')->label('Usuários afetados')->step('1'),
+            Field::number('usuarios_afetados')->label('Usuários afetados')->step('1')->min(0),
             Field::textarea('descricao')->label('Descrição'),
         ])->section('Ativo afetado', [
-            Field::select('distrito_id', $districts)->label('Distrito'),
+            Field::select('distrito_id', $districts)->label('Distrito')->searchable(),
             Field::remoteSelect('antena_id', route('resource.lookup', 'antenas'), $options['antena_id'])->label('Antena'),
             Field::remoteSelect('cabeamento_id', route('resource.lookup', ['kind' => 'cabeamentos', 'domain' => 'internet']), $options['cabeamento_id'])->label('Cabeamento'),
             Field::remoteSelect('equipamento_id', route('resource.lookup', 'equipamentos'), $options['equipamento_id'])->label('Equipamento de rede'),
-        ])->section('Localização', [Field::point()->label('Ponto afetado')->required()]);
+        ], 'Relacione a falha ao ativo de telecomunicações quando cadastrado.')->section('Localização', [Field::point()->label('Ponto afetado')->required()]);
         $values = $incident ? (array) $incident : [];
         if ($incident) foreach (['ocorrido_em', 'resolvido_em'] as $field) if ($values[$field]) $values[$field] = \Carbon\Carbon::parse($values[$field])->format('Y-m-d\TH:i');
         return view('maps.internet-incident-form', compact('form', 'values', 'incident'));

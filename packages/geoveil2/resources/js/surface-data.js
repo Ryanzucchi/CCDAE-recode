@@ -16,7 +16,7 @@ export function sampleFeatures(features, field) {
     for (const feature of valid) {
         const value = Number(feature.properties[field]);
         const weight = range > 0 ? (value-min)/range : .5;
-        const add = coordinates => points.push({type:'Feature',id:feature.id,geometry:{type:'Point',coordinates},properties:{value,weight}});
+        const add = coordinates => points.push({type:'Feature',id:feature.id,geometry:{type:'Point',coordinates},properties:{...feature.properties,value,weight}});
         if (feature.geometry.type === 'Point') { add(feature.geometry.coordinates); continue; }
         const bounds = boundsOf([feature]); if (!bounds) continue;
         const [[west,south],[east,north]] = bounds;

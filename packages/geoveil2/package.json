@@ -8,6 +8,7 @@
     "./point-editor": "./resources/js/point-editor.js",
     "./geometry-editor": "./resources/js/geometry-editor.js",
     "./remote-select": "./resources/js/remote-select.js",
+    "./local-select": "./resources/js/local-select.js",
     "./optional-columns": "./resources/js/optional-columns.js"
   },
   "files": [

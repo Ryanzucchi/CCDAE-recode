@@ -52,8 +52,11 @@ const geometryReady = document.querySelector('[data-geoveil-geometry]')
 if (document.querySelector('[data-geoveil-form="cabeamentos"]')) geometryReady.then(() => import('./cable-route')).then(module => module.mountCableRoute());
 
 if (document.querySelector('[data-geoveil-remote-select]')) import('@geoveil/core/remote-select').then(module => module.mountRemoteSelects());
+if (document.querySelector('[data-geoveil-select-filter]')) import('@geoveil/core/local-select').then(module => module.mountLocalSelects());
+if (document.querySelector('[data-traffic-period]')) import('./traffic-period').then(module => module.mountTrafficPeriod());
 if (document.querySelector('[data-column-picker]')) import('@geoveil/core/optional-columns').then(module => module.mountOptionalColumns());
 if (document.querySelector('[data-traffic-timeline]')) mapsReady.then(() => import('./traffic-timeline')).then(module => module.mountTrafficTimeline());
+if (document.querySelector('[data-climate-timeline]')) mapsReady.then(() => import('./climate-timeline')).then(module => module.mountClimateTimeline());
 if (document.querySelector('[data-infrastructure-switch]')) mapsReady.then(() => import('./infrastructure-viewer')).then(module => module.mountInfrastructureViewer());
 const climateCount = document.querySelector('[data-climate-count]');
 if (climateCount) fetch(climateCount.dataset.url, { headers: { Accept: 'application/json' } })

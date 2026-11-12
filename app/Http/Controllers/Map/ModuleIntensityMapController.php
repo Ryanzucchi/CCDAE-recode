@@ -4,8 +4,7 @@ namespace App\Http\Controllers\Map;
 
 use App\Http\Controllers\Controller;
 use App\Models\Distrito;
-use App\Services\MapData;
-use GeoVeil\Geometry\PolygonSampler;
+use App\Services\{MapData, DistrictMetricCells};
 use GeoVeil\Layers\{PointLayer, PolygonLayer, SurfaceLayer};
 use GeoVeil\Map;
 use GeoVeil\Plugins\{Leaflet, MapLibre};
@@ -35,19 +34,21 @@ class ModuleIntensityMapController extends Controller
         ],
     ];
 
-    public function __invoke(Request $request, string $module, string $type, MapData $data)
+    public function __invoke(Request $request, string $module, string $type, MapData $data, DistrictMetricCells $metrics)
     {
         abort_unless(isset(self::TYPES[$module][$type]), 404);
         $input = $request->validate([
             'engine' => 'nullable|in:maplibre,leaflet',
             'distrito_id' => ['nullable', 'integer', Rule::exists((new Distrito)->getTable(), 'id')],
-            'inicio' => 'nullable|date', 'fim' => 'nullable|date|after:inicio',
+            'inicio' => 'nullable|date', 'fim' => $request->input('periodo') === 'hour' ? 'nullable|date' : 'nullable|date|after:inicio',
+            'periodo' => 'nullable|in:range,hour',
         ]);
         [$title, $schema, $name, $altitude, $influence] = self::TYPES[$module][$type];
         $districtId = isset($input['distrito_id']) ? (int) $input['distrito_id'] : null;
         $districts = Distrito::query()->orderBy('nome')->get(['id', 'nome']);
         $end = isset($input['fim']) ? \Carbon\Carbon::parse($input['fim']) : now();
         $start = isset($input['inicio']) ? \Carbon\Carbon::parse($input['inicio']) : $end->copy()->subHours($module === 'transito' ? 24 : 720);
+        if ($module === 'transito' && ($input['periodo'] ?? 'range') === 'hour') $end = $start->copy()->addHour();
         if ($module === 'transito' && ($start->greaterThanOrEqualTo($end) || $start->diffInDays($end) > 31)) {
             throw \Illuminate\Validation\ValidationException::withMessages(['inicio' => 'O período deve ter até 31 dias e a data inicial deve ser anterior à final.']);
         }
@@ -55,16 +56,17 @@ class ModuleIntensityMapController extends Controller
         $cells = [];
         $gridSize = $module === 'transito' ? ($type === 'infracoes' ? 0.003 : 0.0014) : 0.00115;
         $notices = [];
-        $add = function (float $lng, float $lat) use (&$cells, $gridSize, $module): void {
+        $add = function (float $lng, float $lat, ?string $name = null) use (&$cells, $gridSize, $module): void {
             if (!is_finite($lat) || !is_finite($lng) || abs($lat) > 90 || abs($lng) > 180) return;
             $key = ($module === 'transito' ? round($lng / $gridSize) : floor($lng / $gridSize)).':'.($module === 'transito' ? round($lat / $gridSize) : floor($lat / $gridSize));
             $cells[$key] ??= ['lat' => 0.0, 'lng' => 0.0, 'count' => 0];
             $cells[$key]['lat'] += $lat;
             $cells[$key]['lng'] += $lng;
             $cells[$key]['count']++;
+            if ($name !== null && $name !== '') $cells[$key]['names'][$name] = true;
         };
         if (($module === 'energia' && in_array($type, ['consumo', 'populacao'], true)) || ($module === 'internet' && $type === 'demanda')) {
-            $cells = $this->districtMetricCells($module, $type, $districtId);
+            $cells = $metrics->cells($type, $districtId);
         } elseif ($module === 'transito' && $type !== 'infracoes') {
             if ($data->exists($table)) $cells = $this->trafficCells($data, $type, $districtId, $start, $end, $gridSize);
             else $notices[] = 'A fonte de dados ainda não está disponível.';
@@ -72,9 +74,10 @@ class ModuleIntensityMapController extends Controller
             $query = DB::table($table)->whereNotNull('latitude')->whereNotNull('longitude')
                 ->when($districtId, fn ($q) => $q->where('distrito_id', $districtId));
             if ($module === 'transito') $query->whereBetween('ocorrido_em', [$start, $end]);
-            foreach ($query->orderBy('id')->select(['latitude', 'longitude'])->cursor() as $row) $add((float) $row->longitude, (float) $row->latitude);
+            $fields = $module === 'transito' ? ['latitude', 'longitude', 'tipo'] : ['latitude', 'longitude'];
+            foreach ($query->orderBy('id')->select($fields)->cursor() as $row) $add((float) $row->longitude, (float) $row->latitude, $module === 'transito' ? ($row->tipo ?? null) : null);
         } else $notices[] = 'A fonte de dados ainda não está disponível.';
-        if ($module === 'internet') {
+        if ($module === 'internet' && $type === 'densidade-rede') {
             $equipment = $data->table('infrastructure', 'equipamentos_infraestrutura');
             if ($data->exists($equipment)) {
                 $query = DB::table($equipment)->whereNotNull('latitude')->whereNotNull('longitude')
@@ -110,7 +113,12 @@ class ModuleIntensityMapController extends Controller
         foreach ($cells as $index => $cell) {
             $features[] = ['type' => 'Feature', 'id' => $index + 1,
                 'geometry' => ['type' => 'Point', 'coordinates' => [$cell['lng'] / $cell['count'], $cell['lat'] / $cell['count']]],
-                'properties' => ['value' => $cell['value'] ?? $cell['count'], 'name' => $cell['name'] ?? ($module === 'transito' ? 'Infrações nesta área' : 'Ativos nesta área')]];
+                'properties' => [
+                    'value' => $cell['value'] ?? $cell['count'],
+                    'name' => $cell['name'] ?? (!empty($cell['names']) ? implode(', ', array_slice(array_keys($cell['names']), 0, 3)) : ($module === 'transito' ? $cell['count'].' ponto(s) nesta área' : 'Ativos nesta área')),
+                    'streets' => $cell['streets'] ?? (isset($cell['names']) ? count($cell['names']) : 0),
+                    'samples' => $cell['count'],
+                ]];
         }
         if (!$features) $notices[] = $module === 'transito' ? 'Nenhum dado de trânsito com localização no período selecionado.' : 'Nenhum ativo com localização disponível.';
         $source = GeoJson::make(['type' => 'FeatureCollection', 'features' => $features]);
@@ -128,7 +136,7 @@ class ModuleIntensityMapController extends Controller
             ? PointLayer::make('intensidade')->label($title)->source($source)->colorBy('value', [2, 5, 10], $colors)->popup(['name' => 'Área', 'value' => 'Valor'])
             : SurfaceLayer::make('intensidade')->label($title)->source($source)->value('value')->altitude($altitude)->influence($influence)->popup(['name' => 'Área', 'value' => 'Valor']);
         $districtLayer = PolygonLayer::make('distritos')->label('Distritos')->source(Distrito::query()->when($districtId, fn ($q) => $q->where('id', $districtId)))->properties(['nome'])->color('#64748b')->popup(['nome' => 'Distrito']);
-        $map = Map::make($module.'-'.$type)->title($title)->theme('dark')->layout('map')
+        $map = Map::make($module.'-'.$type)->title($title)->theme('dark')->layout('embedded')
             ->plugin($leaflet ? Leaflet::make() : MapLibre::make())->center(-57.6875, -16.07083)->zoom(12)
             ->layers([$districtLayer, $layer])->widgets([Stat::make($module === 'transito' ? 'Áreas com infrações' : 'Áreas com ativos')->count('intensidade')]);
         return view('maps.module-intensity', compact('map', 'module', 'type', 'title', 'districts', 'districtId', 'notices', 'start', 'end'));
@@ -151,7 +159,6 @@ class ModuleIntensityMapController extends Controller
         $cells = [];
         foreach ($summary as $road) {
             $value = (float) ($road->metric ?? 0);
-            if ($value <= 0) continue;
             $geometry = is_string($road->geojson) ? json_decode($road->geojson, true) : (array) $road->geojson;
             if (($geometry['type'] ?? null) === 'Feature') $geometry = $geometry['geometry'] ?? [];
             $lines = match ($geometry['type'] ?? null) {
@@ -176,27 +183,10 @@ class ModuleIntensityMapController extends Controller
         foreach ($cells as &$cell) {
             $cell['value'] = $type === 'volume' ? round($cell['value'] / $cell['count'], 2) : $cell['value'] / $cell['count'];
             $cell['name'] = implode(', ', array_slice(array_keys($cell['names']), 0, 3));
+            $cell['streets'] = count($cell['names']);
             unset($cell['names']);
         }
         return $cells;
     }
 
-    private function districtMetricCells(string $module, string $type, ?int $districtId): array
-    {
-        $sampler = new PolygonSampler;
-        $cells = [];
-        foreach (Distrito::query()->when($districtId, fn ($q) => $q->where('id', $districtId))->whereNotNull('geojson')->get() as $district) {
-            $population = (float) ($district->populacao ?? 0);
-            $value = match ($type) {
-                'consumo' => $district->consumo_medio_kwh !== null ? (float) $district->consumo_medio_kwh : $population * 0.18,
-                'demanda' => round($population * 0.78),
-                default => $population,
-            };
-            foreach ($sampler->sample($district->geojson, (float) $district->longitude, (float) $district->latitude) as [$lng, $lat]) {
-                if (!is_finite($lng) || !is_finite($lat) || abs($lat) > 90 || abs($lng) > 180) continue;
-                $cells[] = ['lng' => $lng, 'lat' => $lat, 'count' => 1, 'value' => $value, 'name' => $district->nome];
-            }
-        }
-        return $cells;
-    }
 }

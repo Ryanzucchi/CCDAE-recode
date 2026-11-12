@@ -20,9 +20,34 @@ class AnalyticMapTest extends TestCase
         }
     }
 
-    public function test_population_scale_distinguishes_actual_district_values(): void
+    public function test_leaflet_distinguishes_districts_even_when_population_matches(): void
     {
-        $this->get('/mapas/distritos?engine=leaflet')->assertOk()->assertViewHas('map', fn ($map) => $map->toArray()['layers'][0]['scale']['breaks'] === [500, 1000, 1500, 2000, 2500, 3000]);
+        for ($index = 1; $index <= 47; $index++) {
+            Distrito::create(['nome' => 'Distrito '.$index, 'cidade' => 'Cáceres', 'populacao' => 1200,
+                'geojson' => ['type' => 'Polygon', 'coordinates' => [[[0,0],[1,0],[1,1],[0,0]]]]]);
+        }
+        $this->get('/mapas/distritos?engine=leaflet')->assertOk()->assertViewHas('map', function ($map) {
+            $layer = $map->toArray()['layers'][0];
+            return $layer['categories']['field'] === 'id'
+                && count($layer['categories']['orderedValues']) === 47
+                && count(array_unique($layer['categories']['colors'])) === 47
+                && $layer['data']['features'][0]['properties']['populacao'] === 1200;
+        });
+    }
+
+    public function test_admin_population_surface_uses_original_district_samples(): void
+    {
+        $district = Distrito::create(['nome' => 'Centro', 'cidade' => 'Cáceres', 'populacao' => 1200,
+            'geojson' => ['type' => 'Polygon', 'coordinates' => [[[-57.68,-16.08],[-57.67,-16.08],[-57.67,-16.07],[-57.68,-16.07],[-57.68,-16.08]]]]]);
+        $expected = count((new \GeoVeil\Geometry\PolygonSampler)->sample($district->geojson, (float) $district->longitude, (float) $district->latitude));
+        $this->get('/admin/mapa-populacao')->assertOk()->assertViewHas('map', function ($map) use ($expected) {
+            $definition = $map->toArray();
+            $features = $definition['layers'][0]['data']['features'];
+            return $definition['layout'] === 'embedded' && $definition['layers'][0]['surface']['field'] === 'value'
+                && count($features) === $expected
+                && $features[0]['geometry']['type'] === 'Point'
+                && $features[0]['properties']['value'] === 1200.0;
+        });
     }
 
     public function test_pages_handle_unavailable_sources_without_fake_readings(): void
@@ -30,6 +55,7 @@ class AnalyticMapTest extends TestCase
         foreach (['clima', 'infraestrutura', 'transito'] as $page) {
             $this->get('/mapas/'.$page)->assertOk()->assertSee('disponível');
         }
+        $this->get('/admin/mapa-transito')->assertOk()->assertSee('Legenda do fluxo de trânsito')->assertSee('Sem histórico');
     }
 
     public function test_climate_uses_only_selected_district_and_timestamp(): void
@@ -42,15 +68,41 @@ class AnalyticMapTest extends TestCase
             $table->string('fonte_dado');
         });
         $district = Distrito::create(['nome' => 'Centro', 'cidade' => 'Cáceres', 'geojson' => ['type' => 'Polygon', 'coordinates' => [[[0,0],[1,0],[1,1],[0,0]]]]]);
-        $stamp = now()->subHour()->format('Y-m-d H:i:s');
+        $stamp = now()->subHour()->startOfMinute()->format('Y-m-d H:i:s');
         DB::table('temperatura_registrada')->insert(['distrito_id' => $district->id, 'timestamp' => $stamp, 'temperatura' => 31, 'origem_dado' => 'observado', 'fonte_dado' => 'Estação']);
         $this->get('/mapas/clima?'.http_build_query(['distrito_id' => $district->id, 'at' => $stamp]))
             ->assertOk()->assertViewHas('map', function ($map) {
                 $features = $map->toArray()['layers'][1]['data']['features'];
                 return count($features) === 1 && $features[0]['properties']['valor'] === 31.0;
             });
+        $this->getJson('/mapas/clima?'.http_build_query(['distrito_id' => $district->id, 'at' => $stamp, 'frame' => 1]))
+            ->assertOk()->assertJsonPath('at', $stamp)->assertJsonPath('features.0.properties.valor', 31);
         $this->getJson('/mapas/clima?metric=invalid')->assertUnprocessable();
         $this->getJson('/mapas/clima?at=2000-01-01%2000:00:00')->assertUnprocessable();
+    }
+
+    public function test_climate_uses_temperature_timeline_for_wind_and_summarizes_direction(): void
+    {
+        foreach (['temperatura_registrada' => 'temperatura', 'vento_registrado' => 'velocidade'] as $tableName => $valueColumn) {
+            Schema::create($tableName, function (Blueprint $table) use ($valueColumn, $tableName) {
+                $table->unsignedBigInteger('distrito_id');
+                $table->timestamp('timestamp');
+                $table->float($valueColumn)->nullable();
+                if ($tableName === 'vento_registrado') $table->float('direcao')->nullable();
+                $table->string('origem_dado');
+                $table->string('fonte_dado');
+            });
+        }
+        $district = Distrito::create(['nome' => 'Centro', 'cidade' => 'Cáceres', 'geojson' => ['type' => 'Polygon', 'coordinates' => [[[0,0],[1,0],[1,1],[0,0]]]]]);
+        $minute = now()->subHour()->startOfMinute();
+        DB::table('temperatura_registrada')->insert(['distrito_id' => $district->id, 'timestamp' => $minute, 'temperatura' => 28, 'origem_dado' => 'observado', 'fonte_dado' => 'Estação']);
+        DB::table('vento_registrado')->insert(['distrito_id' => $district->id, 'timestamp' => $minute->copy()->addSeconds(20), 'velocidade' => 12, 'direcao' => 90, 'origem_dado' => 'observado', 'fonte_dado' => 'Estação']);
+        $stamp = $minute->format('Y-m-d H:i:s');
+        $this->getJson('/mapas/clima?'.http_build_query(['metric' => 'vento', 'at' => $stamp, 'frame' => 1]))
+            ->assertOk()->assertJsonPath('features.0.properties.valor', 12)
+            ->assertJsonPath('features.0.properties.direcao', 90)
+            ->assertJsonPath('windSummary.speed', 12)
+            ->assertJsonPath('windSummary.cardinal', 'L');
     }
 
     public function test_traffic_history_frame_marks_roads_without_readings(): void

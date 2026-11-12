@@ -73,8 +73,40 @@ class ModuleOverviewMap
                     ->vectorTiles(route('maps.tilejson', $source), $source, $filter);
             }
         }
+        //comentarios para adptacoes e melhorias
+        //esse $map fornce para varios maps diferentes
+        // se isso for o mapa de infreatrutura que nem eu penso que fica em http://127.0.0.1:8788/admin/mapa-infraestrutura
+        //ocodigo ideal
+        //chamada da funcao de layout {
+        //Map::make('painel-'$module)
+        //->plugin()// se vazio entao maplibre //ou ->selectplugin()//cria um seect para o plugin usado no visaul do site
+        //->title(group['energia', 'infraestrutura eletrica', infraestura de internet'])
+        //->center(get(longlat = table.data))//table e data se referem a uma busca no BD via eloquent
+        //->layout('embedded)
+        //->theme('default')
+        //layers nao devera existir aqui ele deve indentidficar atomaticamente
+        //->maxzoom(12) or ->minzoom(12)
+        //->searchable(distritos)
+        //->allow3d()
+        //->fonts(
+        //->group[e(
+        //'Mapeamento de Infraestrutura',
+        //'fluxo de transito',
+        //'cabeamento' //ou chamar funcao que armazena o grupo fontinfra que deve ser declarada na model
+        //],[tudo, dentro, de, mapeamento], [tudo, dentro, de, fluxo], [tudo, dentro, de, cabeamento])// ainda dentro de fontinfra
+        //->list('distritos')
+        //}
+        //exemplo de fontinfra
+        //  public function getfont(): string{
+        //aqui se pode fazer a query se tiver os dados aramzenados la ou:
+        //return[
+        //'mapeamento de infraestrutura' -> ('x', 'y', 'z')
+        //'cabeamento' -> ('x', 'y', 'z')
+        //e assim vai
+        //]
+        //}
         $map = Map::make('painel-'.$module)->title($module === 'energia' ? 'Infraestrutura elétrica' : 'Infraestrutura de internet')
-            ->theme('dark')->layout('map')->plugin($engine === 'leaflet' ? Leaflet::make() : MapLibre::make())
+            ->theme('dark')->layout('embedded')->plugin($engine === 'leaflet' ? Leaflet::make() : MapLibre::make())
             ->center(-57.681, -16.071)->zoom(12)->layers($layers)->searchable($engine !== 'maplibre')
             ->widgets([Stat::make('Camadas de infraestrutura')->count('distritos')]);
         return [$map, $notices];

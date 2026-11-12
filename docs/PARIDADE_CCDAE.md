@@ -3,7 +3,8 @@
 Meta ativa: concluir navegação, formulários, mapas e módulos. Uma rota existente não significa paridade funcional.
 
 ## Prioridade: Distritos
-- [x] Corrigir escala de população e contornos no Leaflet.
+- [x] Corrigir contornos no Leaflet e manter a escala populacional na superfície 3D do Admin.
+- [x] Em `/mapas/distritos?engine=leaflet`, cores passam a identificar cada distrito individualmente, mesmo quando a população coincide; valores de população continuam no popup. Paleta determinística por ordem de ID, conferida no navegador e em teste.
 - [x] Mapa de distritos por cidade integrado ao cadastro; começa pela seleção de cidade como o original e diferencia os distritos por cores categóricas.
 - [x] Sem cidade selecionada, a tela mostra a mensagem centralizada “Escolha o seu foco” sobre o mapa nos temas claro e escuro, como o original; conferido no navegador em `/admin/distritos`.
 - [x] O mapa do cadastro usa o layout `embedded` reutilizável do GeoVeil 2: 600 px, sem a barra e os painéis do explorador. Cores distintas e popup ao selecionar distrito conferidos no navegador com Cáceres.
@@ -118,16 +119,22 @@ Auditoria de URLs em 11/11/2026: 68 dos 74 caminhos únicos sob `/admin`, `/ener
 
 ## Mapas de intensidade migrados
 - [x] Fuso padrão do recode alinhado a `America/Cuiaba`, como no CCDAE original, para preservar horários dos formulários e janelas dos mapas; a janela de acidentes de 12:21 a 12:21 do dia seguinte foi conferida no navegador.
+- [x] Mapas analíticos usam o layout embutido do GeoVeil 2, sem painéis genéricos sobre a superfície; os filtros ficam no canto do mapa. Trânsito aceita intervalo ou hora específica de 60 minutos como o controle original. Conferido no navegador em claro e escuro no mapa de infrações.
 - [x] Densidade da rede elétrica: postes por célula e superfície 3D, com controle de altitude.
+- [x] Superfícies 3D do GeoVeil 2 exibem no movimento do cursor o local, valor, classificação, faixa de cor e percentual geral como no CCDAE original; o corte de altitude oculta amostras abaixo do limite e atualiza a dica.
 - [x] Densidade elétrica e da rede de internet usam a indexação `floor` da grade de 0,00115° do serviço original; teste com dois postes próximos confirma que não são unidos por arredondamento.
 - [x] Densidade elétrica comparada diretamente com `EnergyAnalyticsService` original em sessão de leitura com esquemas de domínio antes de `public`: ambos produziram 4.556 células e soma 31.255; o SHA-256 da lista ordenada de coordenadas e valores foi idêntico (`f527bd4261c963f59a0abfe19837447e0999a0c01ad6204cd3e5daae004ad081`).
 - [x] Cabos de internet usam `ST_SimplifyPreserveTopology(geom, 0.00003)` no PostgreSQL, como o serviço original, com fallback GeoJSON nos testes SQLite.
 - [x] Densidade da rede de internet comparada diretamente com `InternetAnalyticsService` original na mesma sessão de leitura: 4.682 células e soma 109.263 em ambos. Após ordenar antenas, equipamentos e cabos por ID, o SHA-256 das coordenadas e valores também coincidiu (`5b5f3a33539fed6073bb237801f1ece90a3a490c1b06159c1aece9ddb8e94888`).
-- [ ] Comparação numérica dos demais mapas com o serviço original no banco atual: o `search_path` original começa por `public`, cujas tabelas `distritos`, `postes`, `antenas`, `equipamentos_infraestrutura` e `cabeamentos` estão vazias. Os dados usados pelo recode estão nos esquemas `geo` e `infrastructure` (47 distritos, 31.255 postes, 14 antenas, 90.907 equipamentos e 62.261 cabos). Densidade elétrica e rede de internet já foram comparadas com o código original em sessões de leitura que priorizaram os esquemas de domínio; os outros mapas ainda exigem a mesma verificação.
+- [x] Consumo e população de energia e demanda de internet comparados diretamente com os serviços originais: 887 amostras em cada mapa, com SHA-256 idêntico de coordenadas e valores (`0a72b280…`, `c89e63df…`, `1d9fcc40…`). A demanda não inclui mais equipamentos ou cabos; teste com equipamento cadastrado impede regressão.
+- [ ] Comparação numérica dos mapas restantes com o serviço original no banco atual: o `search_path` original começa por `public`, cujas tabelas `distritos`, `postes`, `antenas`, `equipamentos_infraestrutura` e `cabeamentos` estão vazias. Os dados usados pelo recode estão nos esquemas `geo` e `infrastructure` (47 distritos, 31.255 postes, 14 antenas, 90.907 equipamentos e 62.261 cabos). Os cinco mapas de energia/internet já foram comparados com o código original em sessões de leitura que priorizaram os esquemas de domínio; os mapas de trânsito ainda exigem a mesma verificação quando houver leituras.
 - [x] Densidade da rede de internet: antenas, equipamentos e cabeamentos de fibra amostrados, com superfície 3D.
 - [x] Infrações: intensidade geográfica com janela inicial de 24 horas como o original, período ajustável até 31 dias, seleção de distrito e modo Leaflet 2D.
 - [x] Volume médio, acidentes e obras de trânsito: leituras das últimas 24 horas projetadas no traçado das vias a cada 180 m, células de 0,0014° como o serviço original, seleção de distrito, superfície 3D e cores específicas no Leaflet.
+- [x] Vias com leitura zero de volume, acidentes ou obras permanecem na superfície, como no `TrafficIntensityService` original; teste cobre os três mapas.
+- [x] As áreas dos mapas de trânsito preservam os nomes e a contagem de vias ou tipos de infração (`streets`), além da quantidade de amostras, para a dica da superfície 3D como no serviço original.
 - [x] Consumo e população de energia e demanda potencial de internet: amostragem dos polígonos distritais com as fórmulas do original, superfície 3D, filtros e Leaflet 2D.
+- [x] `/admin/mapa-populacao` usa a mesma amostragem distrital do serviço analítico original (887 pontos no banco atual), em vez de enviar polígonos diretamente ao renderizador. O campo de intensidade, a superfície colorida, o enquadramento, a legenda e o controle de altitude foram conferidos no navegador em temas claro e escuro; a rota genérica `/mapas/distritos` preserva seu explorador.
 - [ ] Comparação visual e numérica detalhada de cada mapa com as páginas originais.
 
 ## Cadastros administrativos migrados
@@ -154,6 +161,12 @@ Auditoria de URLs em 11/11/2026: 68 dos 74 caminhos únicos sob `/admin`, `/ener
 - [x] Sete listagens pelo catálogo `GeoVeil\Resources\Resource`: temperatura, vento, chuva, pressão, radiação, UV e partículas; filtros por nome/distrito e paginação sem contagem integral.
 - [x] Leitura no esquema `climate` compartilhado, conferida com registros reais de temperatura.
 - [x] Ordenação por cada coluna permitida no original, data/hora no formato local e faixa visual da temperatura.
+- [x] Mapa climático: o histórico das últimas 24 leituras pode ser percorrido e reproduzido no próprio GeoVeil 2 sem recarga; os quadros são servidos pelo mesmo filtro de variável, distrito e horário da página.
+- [x] Mapa climático: controles de variáveis e legenda por faixas sobre o mapa de 750 px, com estados claro/escuro; conferido no navegador do recode.
+- [x] Mapa climático: linha temporal única a partir das leituras de temperatura, agrupada por hora e sincronizada entre as sete variáveis; vento considera leituras do mesmo minuto e mostra velocidade média, direção cardeal e intensidade no painel flutuante. Teste cobre leitura com segundos diferentes dentro do minuto.
+- [x] Mapa de trânsito do Admin: legenda de velocidade e direção sobre a área de 750 px e faixa de histórico abaixo do mapa, incluindo estado desabilitado quando não há leituras; conferido no navegador do recode.
+- [x] Mapa de infraestrutura do Admin: 2D e visualizador 3D compartilham a mesma área de 750 px, com troca de modo flutuante, aviso de zoom e legenda de camadas no mapa; estado 3D sem distrito conferido no navegador.
+- [ ] Comparação visual autenticada do mapa climático e paridade fina de cores, setas de vento e transições com o CCDAE original.
 - [ ] Paridade visual completa das tabelas climáticas. As sete páginas originais exibem `CreateAction`, mas temperatura, vento e chuva não implementam `form()`; pressão, radiação, UV e partículas usam `components([])`. Não há campos funcionais de criação a migrar sem definir um novo comportamento.
 
 ## Recursos migrados com a API de formulários do GeoVeil 2
@@ -161,6 +174,11 @@ Auditoria de URLs em 11/11/2026: 68 dos 74 caminhos únicos sob `/admin`, `/ener
 - [x] Incidentes de internet: listagem, criação, edição, ponto no mapa, validação e conta master.
 - [x] Infrações de trânsito: listagem, criação, edição, ponto no mapa, validação e conta master.
 - [x] Seletores remotos nos incidentes e infrações; incidentes de internet filtram os cabeamentos de telecomunicações, enquanto incidentes de energia aceitam qualquer cabeamento, como os formulários originais.
+- [x] A API de formulários do GeoVeil 2 expressa limites de comprimento, mínimos, máximos, linhas de texto e descrição de seção. O formulário de infrações replica os limites de tipo, código, placa, pontos e descrição do Filament; o de internet limita usuários afetados a valores não negativos.
+- [x] Seleções locais pesquisáveis do GeoVeil 2 nos campos de distrito e causa dos incidentes e de distrito das infrações, preservando o valor escolhido e o envio do formulário como no Filament.
+- [x] Formulário de vias mostra o ID OpenStreetMap desabilitado como no recurso original e marca mínimos de uma faixa e 1 km/h nos campos numéricos; a gravação continua impedindo alteração desse ID.
+- [x] Formulários de infraestrutura usam seleção de distrito pesquisável, seções de uma, duas ou três colunas conforme o recurso Filament e títulos/ordem originais; o roteamento de cabos aparece depois de conservação e antes do traçado.
+- [x] Tabela de vias inclui as cinco colunas opcionais do Filament (sentido, pavimento, inclinação, criação e atualização), com visibilidade persistida pelo componente GeoVeil 2; as datas opcionais também ordenam, e a busca aceita o ID do distrito.
 - [x] Incidentes de energia/internet e infrações: listagem reutilizável com colunas originais, situação, busca e ordenação das colunas permitidas pelo Filament.
 - [x] Etiquetas visuais das colunas de tipo, causa, severidade e situação dos incidentes e situação das infrações, declaradas no recurso GeoVeil 2 como no Filament original.
 - [x] Exclusão em lote de incidentes de energia/internet e infrações, restrita à conta master, com seleção explícita e confirmação.
@@ -195,6 +213,7 @@ Auditoria de URLs em 11/11/2026: 68 dos 74 caminhos únicos sob `/admin`, `/ener
 - [x] Energia e internet: indicadores originais e mapa da rede no próprio painel, com filtro por distrito e troca MapLibre/Leaflet.
 - [x] Trânsito: três indicadores do painel original, incluindo veículos na última leitura.
 - [x] Painéis de Energia e Internet: indicadores aparecem antes do mapa, com o filtro de distrito junto da rede, descrição e legenda como nas páginas originais. O painel inicial de Trânsito mostra apenas os três indicadores, sem o filtro de distrito que não existe no original. Energia conferida visualmente no navegador em tema claro.
+- [x] Mapas dos painéis Energia e Internet usam o layout embutido do GeoVeil 2, sem barra e painéis genéricos sobre a rede; trocar distrito ou motor atualiza a página imediatamente. Internet foi conferida no navegador em tema escuro com os dados reais (14 antenas, 31.158 trechos de telecom) e filtro de distrito alterando os indicadores e a URL.
 - [x] Energia e internet no MapLibre: carregar postes, cabos e demais ativos por mosaicos vetoriais Martin via GeoVeil 2, sem o corte arbitrário de 5.000 itens. O proxy local restringe as fontes publicadas e permite filtros por distrito.
 - [x] Energia e internet no MapLibre: camadas 3D de postes, equipamentos e antenas usam os mosaicos do original, com altura `render_height` e zoom mínimo correspondente.
 - [x] Energia e internet no Leaflet: carregar feições da janela visível via GeoVeil 2 e consulta espacial no banco, sem corte de 5.000 itens; recarregar ao mover ou ampliar o mapa.

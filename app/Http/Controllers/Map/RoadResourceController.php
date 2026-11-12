@@ -18,7 +18,7 @@ class RoadResourceController extends Controller
         $input = $request->validate([
             'q' => 'nullable|string|max:100',
             'distrito_id' => ['nullable', 'integer', Rule::exists((new Distrito)->getTable(), 'id')],
-            'sort' => ['nullable', Rule::in(['tipo', 'numero_faixas', 'limite_velocidade', 'velocidade_media', 'volume_veiculos', 'ultima_atualizacao'])],
+            'sort' => ['nullable', Rule::in(['tipo', 'numero_faixas', 'limite_velocidade', 'velocidade_media', 'volume_veiculos', 'ultima_atualizacao', 'created_at', 'updated_at'])],
             'direction' => 'nullable|in:asc,desc',
         ]);
         $resource = $catalog->get();
@@ -26,9 +26,11 @@ class RoadResourceController extends Controller
         $sort = $input['sort'] ?? null;
         $direction = $input['direction'] ?? 'asc';
         $items = DB::table($data->table('mobility', 'via_transitos'))
-            ->when($input['q'] ?? null, fn ($query, $q) => $query->where(fn ($query) => $query
-                ->where('nome', $operator, '%'.$q.'%')->orWhere('tipo', $operator, '%'.$q.'%')
-                ->orWhere('nivel_congestionamento', $operator, '%'.$q.'%')->orWhere('impacto_manutencao', $operator, '%'.$q.'%')))
+            ->when($input['q'] ?? null, fn ($query, $q) => $query->where(function ($query) use ($q, $operator) {
+                $query->where('nome', $operator, '%'.$q.'%')->orWhere('tipo', $operator, '%'.$q.'%')
+                    ->orWhere('nivel_congestionamento', $operator, '%'.$q.'%')->orWhere('impacto_manutencao', $operator, '%'.$q.'%');
+                if (ctype_digit((string) $q)) $query->orWhere('distrito_id', (int) $q);
+            }))
             ->when($input['distrito_id'] ?? null, fn ($query, $id) => $query->where('distrito_id', $id))
             ->when($sort, fn ($query) => $query->orderBy($sort, $direction))
             ->orderBy('nome')->orderBy('id')->paginate(20)->withQueryString();

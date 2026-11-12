@@ -34,7 +34,7 @@ class AnalyticMapController extends Controller
         $districts = Distrito::query()->orderBy('nome')->get(['id', 'nome']);
         $geometry = Distrito::query()->when($districtId, fn ($q) => $q->where('id', $districtId));
         $layers = [PolygonLayer::make('distritos')->label('Distritos')->source($geometry)->properties(['nome'])->popup(['nome' => 'Distrito'])->color('#64748b')];
-        $widgets = []; $notices = []; $times = []; $selectedTime = null;
+        $widgets = []; $notices = []; $times = []; $selectedTime = null; $windSummary = null;
         $metric = $request->input('metric', 'temperatura');
         $titles = ['clima' => 'Central de Monitoramento Climático', 'infraestrutura' => 'Visão Global da Infraestrutura', 'transito' => 'Fluxo de Trânsito Urbano'];
         $title = $titles[$page];
@@ -152,31 +152,64 @@ class AnalyticMapController extends Controller
         } else {
             [$name, $field, $label, $unit, $breaks] = self::METRICS[$metric];
             $table = $data->table('climate', $name);
-            if ($data->exists($table)) {
-                $query = DB::table($table)->where('timestamp', '>=', now()->subHours(24))->where('timestamp', '<=', now())->when($districtId, fn ($q) => $q->where('distrito_id', $districtId));
-                $times = (clone $query)->select('timestamp')->distinct()->orderByDesc('timestamp')->limit(24)->pluck('timestamp')->map(fn ($stamp) => \Carbon\Carbon::parse($stamp)->format('Y-m-d H:i:s'))->all();
+            $temperatureTable = $data->table('climate', 'temperatura_registrada');
+            if ($data->exists($temperatureTable)) {
+                $times = DB::table($temperatureTable)->where('timestamp', '>=', now()->subHours(24))->where('timestamp', '<=', now())
+                    ->select('timestamp')->distinct()->orderBy('timestamp')->pluck('timestamp')
+                    ->map(fn ($stamp) => \Carbon\Carbon::parse($stamp)->format('Y-m-d H:i:00'))->unique()
+                    ->groupBy(fn ($stamp) => substr($stamp, 0, 13))->map(fn ($hour) => $hour->last())
+                    ->values()->take(-24)->reverse()->values()->all();
                 $selectedTime = $request->input('at', $times[0] ?? null);
                 if ($selectedTime && !in_array($selectedTime, $times, true)) abort(422, 'Horário fora das leituras disponíveis.');
-                if ($selectedTime) {
-                    $readings = (clone $query)->where('timestamp', $selectedTime)->orderBy('distrito_id')->get(['distrito_id', $field, 'origem_dado', 'fonte_dado'])->keyBy('distrito_id');
+                $rows = collect();
+                if ($selectedTime && $data->exists($table)) {
+                    $query = DB::table($table)->where('timestamp', '>=', $selectedTime)
+                        ->where('timestamp', '<', \Carbon\Carbon::parse($selectedTime)->addMinute()->format('Y-m-d H:i:s'))
+                        ->when($districtId, fn ($q) => $q->where('distrito_id', $districtId));
+                    $columns = ['distrito_id', $field, 'origem_dado', 'fonte_dado'];
+                    if ($metric === 'vento') $columns[] = 'direcao';
+                    $readings = $query->orderBy('distrito_id')->get($columns)->keyBy('distrito_id');
                     $rows = (clone $geometry)->get(['id', 'nome', 'geojson'])->filter(fn ($district) => isset($readings[$district->id]) && $readings[$district->id]->$field !== null)->map(function ($district) use ($readings, $field, $selectedTime) {
                         $reading = $readings[$district->id];
                         $district->valor = (float) $reading->$field;
                         $district->origem = $reading->origem_dado;
                         $district->fonte = $reading->fonte_dado;
                         $district->horario = $selectedTime;
+                        if (property_exists($reading, 'direcao')) $district->direcao = $reading->direcao;
                         return $district;
                     });
-                    $layers[] = PolygonLayer::make('clima')->label("$label ($unit)")->source($data->features($rows, ['nome', 'valor', 'origem', 'fonte', 'horario']))->colorBy('valor', $breaks, ['#38bdf8', '#22c55e', '#facc15', '#ef4444'])->popup(['nome' => 'Distrito', 'valor' => "$label ($unit)", 'horario' => 'Leitura', 'origem' => 'Origem', 'fonte' => 'Fonte']);
-                    $widgets[] = Stat::make('Distritos com leitura')->count('clima');
-                } else $notices[] = 'Sem leituras desta variável nas últimas 24 horas. Os limites dos distritos continuam visíveis.';
-            } else $notices[] = 'A fonte desta variável climática ainda não está disponível.';
+                    if ($metric === 'vento') $windSummary = $this->windSummary($rows);
+                }
+                $layers[] = PolygonLayer::make('clima')->label("$label ($unit)")->source($data->features($rows, ['nome', 'valor', 'origem', 'fonte', 'horario', 'direcao']))->colorBy('valor', $breaks, ['#38bdf8', '#22c55e', '#facc15', '#ef4444'])->popup(['nome' => 'Distrito', 'valor' => "$label ($unit)", 'horario' => 'Leitura', 'origem' => 'Origem', 'fonte' => 'Fonte']);
+                $widgets[] = Stat::make('Distritos com leitura')->count('clima');
+                if (!$times) $notices[] = 'Sem leituras climáticas nas últimas 24 horas. Os limites dos distritos continuam visíveis.';
+                elseif (!$data->exists($table)) $notices[] = 'A fonte desta variável climática ainda não está disponível.';
+                elseif ($rows->isEmpty()) $notices[] = 'Sem leitura desta variável no horário selecionado.';
+            } else $notices[] = 'A fonte de temperatura, base do histórico climático, ainda não está disponível.';
         }
-        $map = Map::make($page.'-map')->title($title)->theme('dark')->layout('map')->plugin($request->input('engine') === 'leaflet' ? Leaflet::make() : MapLibre::make())->center(-57.681, -16.071)->zoom(12)->layers($layers)->widgets($widgets);
+        $map = Map::make($page.'-map')->title($title)->theme('dark')->layout('embedded')->plugin($request->input('engine') === 'leaflet' ? Leaflet::make() : MapLibre::make())->center(-57.681, -16.071)->zoom(12)->layers($layers)->widgets($widgets);
+        if ($page === 'clima' && $request->boolean('frame')) {
+            $climate = collect($map->toArray()['layers'])->firstWhere('id', 'clima');
+            return response()->json(['at' => $selectedTime, 'times' => $times, 'features' => $climate['data']['features'] ?? [], 'windSummary' => $windSummary]);
+        }
         if ($page === 'transito' && $request->boolean('frame')) {
             $mapLayers = collect($map->toArray()['layers'])->keyBy('id');
             return response()->json(['at' => $selectedTime, 'times' => $times, 'vias' => $mapLayers->get('vias')['data']['features'] ?? [], 'viasSemLeitura' => $mapLayers->get('vias-sem-leitura')['data']['features'] ?? []]);
         }
-        return view('maps.analytic', compact('map', 'page', 'title', 'districts', 'districtId', 'notices', 'times', 'selectedTime', 'metric'));
+        return view('maps.analytic', compact('map', 'page', 'title', 'districts', 'districtId', 'notices', 'times', 'selectedTime', 'metric', 'windSummary'));
+    }
+
+    private function windSummary($rows): ?array
+    {
+        $valid = $rows->filter(fn ($row) => $row->direcao !== null);
+        if ($valid->isEmpty()) return null;
+        $speed = $valid->avg('valor');
+        $x = $valid->sum(fn ($row) => sin(deg2rad((float) $row->direcao)));
+        $y = $valid->sum(fn ($row) => cos(deg2rad((float) $row->direcao)));
+        $direction = fmod(rad2deg(atan2($x, $y)) + 360, 360);
+        $cardinals = ['N', 'NE', 'L', 'SE', 'S', 'SO', 'O', 'NO'];
+        return ['speed' => round($speed, 1), 'direction' => round($direction, 1),
+            'cardinal' => $cardinals[((int) round($direction / 45)) % 8],
+            'description' => $speed < 6 ? 'brisa leve' : ($speed < 15 ? 'vento moderado' : ($speed < 30 ? 'vento forte' : 'ventania'))];
     }
 }

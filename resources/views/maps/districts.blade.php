@@ -8,16 +8,12 @@
             </nav>
         </div>
         @if(request('engine') === 'leaflet')
-        <div class="ccdae-map-card" aria-label="Legenda de população" style="margin-bottom:16px">
-            <strong>População por distrito</strong>
-            <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px">
-            @foreach(['#440154' => 'Menos de 500', '#443983' => '500–999', '#31688e' => '1.000–1.499', '#21918c' => '1.500–1.999', '#35b779' => '2.000–2.499', '#90d743' => '2.500–2.999', '#fde725' => '3.000 ou mais'] as $color => $label)
-                <span><span aria-hidden="true" style="display:inline-block;width:16px;height:16px;border:1px solid #64748b;background:{{ $color }};vertical-align:middle"></span> {{ $label }}</span>
-            @endforeach
-            </div>
+        <div class="ccdae-map-card" aria-label="Legenda dos distritos" style="margin-bottom:16px">
+            <strong>Distritos por cor</strong>
+            <p>Cada distrito recebe uma cor própria na sequência do mapa. Clique para ver a população e a cidade.</p>
             <a href="{{ route('original-admin.districts') }}">Abrir cadastro de distritos</a>
         </div>
         @endif
-        <section class="ccdae-map-card"><x-geoveil::map :map="$map" /></section>
-        <p class="ccdae-map-note">@if(request('engine') !== 'leaflet') A superfície distribui os valores dos distritos no espaço. As alturas representam intensidade relativa, não altitude do terreno. @else População representada por polígonos de distritos. @endif</p>
+        <section class="ccdae-map-card @if(request()->routeIs('original-admin.map-population')) ccdae-population-stage @endif"><x-geoveil::map :map="$map" /></section>
+        <p class="ccdae-map-note">@if(request('engine') !== 'leaflet') A superfície distribui os valores dos distritos no espaço. As alturas representam intensidade relativa, não altitude do terreno. @else As cores identificam os distritos; a população aparece ao selecionar cada polígono. @endif</p>
 @endsection

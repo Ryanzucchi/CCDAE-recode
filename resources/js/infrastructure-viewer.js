@@ -11,7 +11,11 @@ export function mountInfrastructureViewer() {
     let scene = null, payload = null;
 
     buildings.addEventListener('change', () => {
-        map.querySelector('[data-geoveil]')?.geoveil?.setLayerVisible('construcoes', buildings.checked);
+        const geoveil = map.querySelector('[data-geoveil]')?.geoveil;
+        if (geoveil) {
+            try { geoveil.setLayerVisible('construcoes', buildings.checked); }
+            catch (error) { if (!error.message?.includes('Camada desconhecida')) throw error; }
+        }
         if (scene && payload) scene.render(payload, buildings.checked);
     });
 

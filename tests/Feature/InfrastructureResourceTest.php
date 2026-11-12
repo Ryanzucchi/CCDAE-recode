@@ -85,6 +85,16 @@ class InfrastructureResourceTest extends TestCase
         $this->assertSame('5G', DB::table('antenas')->first()->tipo_sinal);
     }
 
+    public function test_infrastructure_form_sections_follow_original_filament_order_and_columns(): void
+    {
+        $this->actingAs(User::factory()->create(['email' => 'master@example.test']));
+        $this->get(route('infrastructure.resource.create', 'postes'))->assertOk()
+            ->assertSee('data-geoveil-select-filter="gv-postes-distrito_id"', false)
+            ->assertSeeInOrder(['Dados Principais', 'data-columns="2"', 'Desgaste &amp; Vida Útil', 'data-columns="3"', 'Localização Espacial (Nó do Grafo)'], false);
+        $this->get(route('infrastructure.resource.create', 'cabeamentos'))->assertOk()
+            ->assertSeeInOrder(['Dados Principais (Aresta do Grafo)', 'Desgaste &amp; Vida Útil', 'Roteamento do Grafo (Conexões Físicas)', 'Traçado Espacial (Edge)'], false);
+    }
+
     public function test_original_infrastructure_slug_keeps_list_create_edit_and_save_on_original_paths(): void
     {
         $this->actingAs(User::factory()->create(['email' => 'master@example.test']));

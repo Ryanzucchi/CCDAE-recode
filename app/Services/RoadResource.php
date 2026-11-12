@@ -23,11 +23,12 @@ class RoadResource
             ->section('Dados da via', [
                 Field::select('distrito_id', $districts)->label('Distrito'),
                 Field::text('nome')->label('Nome'),
+                Field::text('osm_way_id')->label('ID da via no OpenStreetMap')->disabled(),
                 Field::select('tipo', $types)->label('Tipo'),
-                Field::number('numero_faixas')->label('Número de faixas')->step('1'),
+                Field::number('numero_faixas')->label('Número de faixas')->step('1')->min(1),
                 Field::select('sentido', ['unica' => 'Mão única', 'dupla' => 'Mão dupla'])->label('Sentido'),
                 Field::select('direcao_fluxo', self::DIRECTIONS)->label('Direção do fluxo')->required()->default('ambos'),
-                Field::number('limite_velocidade')->label('Limite de velocidade (km/h)')->step('1'),
+                Field::number('limite_velocidade')->label('Limite de velocidade (km/h)')->step('1')->min(1),
                 Field::select('estado_pavimento', $pavements)->label('Pavimento / conservação'),
                 Field::number('inclinacao_pista')->label('Inclinação da pista (%)')->step('0.01'),
             ])->section('Fluxo', [
@@ -38,6 +39,6 @@ class RoadResource
                 Field::datetime('ultima_atualizacao')->label('Última atualização')->required()->default(now()->format('Y-m-d\TH:i')),
             ])->section('Traçado da via', [Field::line()->label('Geometria da via')]);
         return Resource::make('vias', 'Vias de trânsito', 'mobility.via_transitos')->form($form)
-            ->columns(['distrito_id' => 'Distrito', 'nome' => 'Nome', 'tipo' => 'Tipo', 'numero_faixas' => 'Faixas', 'direcao_fluxo' => 'Direção do fluxo', 'limite_velocidade' => 'Limite km/h', 'nivel_congestionamento' => 'Congestionamento', 'velocidade_media' => 'Velocidade média', 'volume_veiculos' => 'Volume de veículos', 'impacto_manutencao' => 'Impacto de manutenção', 'ultima_atualizacao' => 'Última atualização']);
+            ->columns(['distrito_id' => 'Distrito', 'nome' => 'Nome', 'tipo' => 'Tipo', 'numero_faixas' => 'Faixas', 'sentido' => 'Sentido', 'direcao_fluxo' => 'Direção do fluxo', 'limite_velocidade' => 'Limite km/h', 'estado_pavimento' => 'Pavimento', 'inclinacao_pista' => 'Inclinação %', 'nivel_congestionamento' => 'Congestionamento', 'velocidade_media' => 'Velocidade média', 'volume_veiculos' => 'Volume de veículos', 'impacto_manutencao' => 'Impacto de manutenção', 'ultima_atualizacao' => 'Última atualização', 'created_at' => 'Criado em', 'updated_at' => 'Atualizado em']);
     }
 }

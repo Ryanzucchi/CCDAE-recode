@@ -12,6 +12,12 @@ final class Field implements \JsonSerializable
     private ?string $help = null;
     private mixed $default = null;
     private ?string $step = null;
+    private ?int $maxLength = null;
+    private int|float|null $minimum = null;
+    private int|float|null $maximum = null;
+    private ?int $rows = null;
+    private bool $searchable = false;
+    private bool $disabled = false;
     private ?string $endpoint = null;
 
     private function __construct(private string $name, private string $type)
@@ -37,11 +43,17 @@ final class Field implements \JsonSerializable
     public function help(string $text): self { $this->help = $text; return $this; }
     public function default(mixed $value): self { $this->default = $value; return $this; }
     public function step(string $value): self { $this->step = $value; return $this; }
+    public function maxLength(int $value): self { if ($value < 1) throw new InvalidArgumentException('Comprimento máximo inválido.'); $this->maxLength = $value; return $this; }
+    public function min(int|float $value): self { $this->minimum = $value; return $this; }
+    public function max(int|float $value): self { $this->maximum = $value; return $this; }
+    public function rows(int $value): self { if ($value < 1) throw new InvalidArgumentException('Número de linhas inválido.'); $this->rows = $value; return $this; }
+    public function searchable(): self { if ($this->type !== 'select') throw new InvalidArgumentException('Busca local exige um campo de seleção.'); $this->searchable = true; return $this; }
+    public function disabled(): self { $this->disabled = true; return $this; }
     public function options(array $options): self { $this->options = $options; return $this; }
     public function endpoint(string $url): self { if ($url === '') throw new InvalidArgumentException('Endpoint de busca ausente.'); $this->endpoint = $url; return $this; }
 
     public function jsonSerialize(): array
     {
-        return ['name' => $this->name, 'type' => $this->type, 'label' => $this->label, 'required' => $this->required, 'options' => $this->options, 'help' => $this->help, 'default' => $this->default, 'step' => $this->step, 'endpoint' => $this->endpoint];
+        return ['name' => $this->name, 'type' => $this->type, 'label' => $this->label, 'required' => $this->required, 'options' => $this->options, 'help' => $this->help, 'default' => $this->default, 'step' => $this->step, 'maxLength' => $this->maxLength, 'min' => $this->minimum, 'max' => $this->maximum, 'rows' => $this->rows, 'searchable' => $this->searchable, 'disabled' => $this->disabled, 'endpoint' => $this->endpoint];
     }
 }
